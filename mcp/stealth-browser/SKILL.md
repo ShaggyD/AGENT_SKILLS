@@ -176,6 +176,45 @@ python3 /path/to/mcp_server.py 2>&1 </dev/null | head -5
 
 Most common: `pip install mcp` is missing.
 
+### Chrome for Testing vs real Chromium — WAF fingerprinting gap
+
+agent-browser downloads and uses **"Google Chrome for Testing"** — a special Chromium build with a distinct binary fingerprint. Aggressive WAFs like DataDome (Wellfound, some enterprise portals) can identify Chrome for Testing by its binary signatures alone, even when all stealth patches are passing (`webdriver: false`, clean UA, extension loaded) and the browser runs in headed mode. This is independent of any flag or extension — the binary itself is the tell.
+
+**Signs you're hitting this:** The page shows "Access is temporarily restricted" / DataDome CAPTCHA despite all stealth patches passing. Your real browser on the same IP works fine.
+
+**Fix:**
+
+1. Install system Chromium:
+```bash
+sudo apt-get install chromium-browser
+```
+
+2. Override agent-browser's Chrome binary:
+```bash
+export AGENT_BROWSER_CHROME_PATH=/snap/bin/chromium
+```
+
+3. For aggressive WAFs, also use headed mode:
+```bash
+AGENT_BROWSER_CHROME_PATH=/snap/bin/chromium \
+AGENT_BROWSER_HEADED=true \
+agent-browser open <url> --args "--no-sandbox" --headed
+```
+
+4. For the MCP server, wrap with `env`:
+```yaml
+mcp_servers:
+  stealth-browser:
+    command: env
+    args:
+      - AGENT_BROWSER_CHROME_PATH=/snap/bin/chromium
+      - python3
+      - /path/to/mcp_server.py
+    enabled: true
+```
+
+**Persistence:** DataDome may learn the system Chromium fingerprint after the first request. Each fresh browser launch buys one successful page load. Pair with a residential proxy for recurring scraping.
+
 ## Architecture
 
 See `references/architecture.md` for detailed design: daemon lifecycle, JSON response unwrapping, thread safety model, command output shapes, and stealth extension internals.
